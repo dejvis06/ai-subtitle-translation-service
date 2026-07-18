@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: ai-subtitle-translation-service
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          temperature: 0
+          model: gpt-5.2
