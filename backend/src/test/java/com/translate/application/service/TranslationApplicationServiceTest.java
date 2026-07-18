@@ -1,6 +1,7 @@
 package com.translate.application.service;
 
 import com.translate.application.port.AiTranslationClient;
+import com.translate.application.port.TranslationProgressPort;
 import com.translate.domain.model.TranslatedEntry;
 import com.translate.domain.model.TranslationEntry;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,9 @@ class TranslationApplicationServiceTest {
 
     @Mock
     AiTranslationClient aiTranslationClient;
+
+    @Mock
+    TranslationProgressPort progressPort;
 
     @InjectMocks
     TranslationApplicationService service;

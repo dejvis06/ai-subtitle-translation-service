@@ -8,3 +8,7 @@ spring:
         options:
           temperature: 0
           model: gpt-5.2
+  mvc:
+    async:
+      # Allow SSE connections and long async operations up to 10 minutes
+      request-timeout: 600000

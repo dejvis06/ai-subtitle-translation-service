@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Subtitle Translator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <!-- Film frame -->
+          <rect x="4" y="8" width="40" height="32" rx="3" fill="#fff" fill-opacity="0.15" stroke="#fff" stroke-width="1.5"/>
+          <!-- Sprocket holes left -->
+          <rect x="7" y="12" width="4" height="4" rx="1" fill="#fff" fill-opacity="0.5"/>
+          <rect x="7" y="20" width="4" height="4" rx="1" fill="#fff" fill-opacity="0.5"/>
+          <rect x="7" y="28" width="4" height="4" rx="1" fill="#fff" fill-opacity="0.5"/>
+          <!-- Sprocket holes right -->
+          <rect x="37" y="12" width="4" height="4" rx="1" fill="#fff" fill-opacity="0.5"/>
+          <rect x="37" y="20" width="4" height="4" rx="1" fill="#fff" fill-opacity="0.5"/>
+          <rect x="37" y="28" width="4" height="4" rx="1" fill="#fff" fill-opacity="0.5"/>
+          <!-- Subtitle lines -->
+          <rect x="15" y="22" width="18" height="2.5" rx="1.25" fill="#fff"/>
+          <rect x="15" y="27" width="12" height="2.5" rx="1.25" fill="#fff" fill-opacity="0.7"/>
+          <!-- Sparkle / AI indicator -->
+          <circle cx="38" cy="10" r="5" fill="#a78bfa"/>
+          <path d="M38 7v6M35 10h6" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>AI Subtitle Translator</h1>
+        <p class="tagline">Drop an .srt file. Pick a language. Get your translation.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- ── Upload card ─────────────────────────────────── -->
+    <section class="card" id="upload-card" aria-label="Upload">
+
+      <!-- Drop zone -->
+      <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="Drop your .srt file here or click to browse">
+        <div class="drop-icon" aria-hidden="true">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="6" width="32" height="36" rx="3" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M16 18h16M16 24h16M16 30h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M30 4v10h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <p class="drop-main">Drag &amp; drop your <strong>.srt</strong> file here</p>
+        <p class="drop-sub">or</p>
+        <label class="btn btn-outline" for="file-input">Browse file</label>
+        <input type="file" id="file-input" accept=".srt" hidden aria-label="Choose .srt file" />
+
+        <!-- File selected indicator (replaces the above content) -->
+        <div class="file-badge" id="file-badge" hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span id="file-name-display"></span>
+          <button class="remove-file" id="remove-file" aria-label="Remove file" type="button">×</button>
+        </div>
+      </div>
+
+      <!-- Language selector -->
+      <div class="form-group">
+        <label for="language-input">Target language</label>
+        <div class="language-wrapper">
+          <input
+            type="text"
+            id="language-input"
+            placeholder="Search or type a language…"
+            autocomplete="off"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            aria-controls="language-listbox"
+          />
+          <ul class="language-dropdown" id="language-listbox" role="listbox" aria-label="Languages" hidden></ul>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="translate-btn" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+        Translate
+      </button>
+
+    </section>
+
+    <!-- ── Progress card ───────────────────────────────── -->
+    <section class="card card-progress" id="progress-card" hidden aria-label="Translation progress" aria-live="polite">
+
+      <div class="progress-header" id="progress-header">
+        <div class="spinner" aria-hidden="true"></div>
+        <span id="progress-status-text">Starting translation…</span>
+      </div>
+
+      <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-bar-container">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+      <div class="progress-meta">
+        <span id="progress-pct">0%</span>
+        <span id="progress-batch-info"></span>
+      </div>
+
+      <!-- Done state (hidden until complete) -->
+      <div class="done-state" id="done-state" hidden>
+        <div class="done-icon" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="9 12 11.5 14.5 15.5 9.5"/>
+          </svg>
+        </div>
+        <p class="done-text">Translation complete!</p>
+        <a class="btn btn-primary" id="download-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download translated file
+        </a>
+        <button class="btn btn-ghost" id="new-translation-btn" type="button">Translate another file</button>
+      </div>
+
+      <!-- Error state -->
+      <div class="error-state" id="error-state" hidden>
+        <div class="error-icon" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <p class="error-text" id="error-text">Something went wrong.</p>
+        <button class="btn btn-ghost" id="retry-btn" type="button">Try again</button>
+      </div>
+
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    Powered by Spring AI &amp; OpenAI
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
