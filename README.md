@@ -80,11 +80,7 @@ The stream emits:
 | `done`     | `{}`                                                       |
 | `error`    | `{ message }`                                              |
 
-### 3. Save to Filesystem
-
-`TranslationApplicationService` saves the uploaded bytes to a temporary directory before processing, then deletes it when done.
-
-### 4. SRT Parsing
+### 3. SRT Parsing
 
 The raw file content is handed to `SubtitleFile.parse()`, which walks through every subtitle block, extracts the spoken text, and replaces it with a numbered placeholder — keeping the original text in an ordered `List<TranslationEntry>`.
 
@@ -119,7 +115,7 @@ TranslationEntry("{{TRANSLATION_1}}", "Good luck.")
 TranslationEntry("{{TRANSLATION_2}}", "Hi. I have an appointment with...")
 ```
 
-### 5. Batched AI Translation
+### 4. Batched AI Translation
 
 `TranslationApplicationService` splits entries into batches of 20 and calls `AiTranslationClient` for each. After each batch, a progress event is pushed to the client via SSE.
 
@@ -143,7 +139,7 @@ And returns:
 TranslatedEntry("{{TRANSLATION_1}}", "Paç fat.")
 ```
 
-### 6. Placeholder Replacement
+### 5. Placeholder Replacement
 
 `SubtitleFile.applyTranslations()` replaces each placeholder in the in-memory content with the translated text.
 
@@ -159,7 +155,7 @@ Paç fat.
 Përshëndetje. Kam një takim me...
 ```
 
-### 7. Download
+### 6. Download
 
 When the SSE `done` event fires, the client fetches the translated file:
 

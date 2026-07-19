@@ -13,8 +13,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -23,12 +21,10 @@ import java.util.concurrent.CompletableFuture;
  * Application service orchestrating the subtitle translation use case.
  *
  * Flow:
- * 1. Save uploaded file bytes to the filesystem
- * 2. Parse the SRT file into a SubtitleFile aggregate
- * 3. Send translation entries to the AI in batches of 20
- * 4. Apply translated text back into the file content
- * 5. Report completion (or errors) through the progress port
- * 6. Delete the temp file
+ * 1. Parse the SRT file bytes into a SubtitleFile aggregate
+ * 2. Send translation entries to the AI in batches of 20
+ * 3. Apply translated text back into the file content
+ * 4. Report completion (or errors) through the progress port
  */
 @Service
 public class TranslationApplicationService {
@@ -61,10 +57,7 @@ public class TranslationApplicationService {
                                                    String targetLanguage) {
         log.info("[Job {}] Starting translation of '{}' into {}", jobId, originalFileName, targetLanguage);
 
-        Path tempFile = null;
         try {
-            tempFile = saveToFilesystem(fileBytes, originalFileName);
-
             String rawContent = readStrippingBom(fileBytes);
             SubtitleFile subtitleFile = SubtitleFile.parse(originalFileName, rawContent);
 
@@ -84,14 +77,6 @@ public class TranslationApplicationService {
         } catch (Exception e) {
             log.error("[Job {}] Translation failed: {}", jobId, e.getMessage(), e);
             progressPort.reportError(jobId, e.getMessage());
-        } finally {
-            if (tempFile != null) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (IOException e) {
-                    log.warn("[Job {}] Could not delete temp file: {}", jobId, e.getMessage());
-                }
-            }
         }
 
         return CompletableFuture.completedFuture(null);
@@ -107,21 +92,16 @@ public class TranslationApplicationService {
                 ? file.getOriginalFilename()
                 : "subtitle.srt";
 
-        Path tempFile = saveToFilesystem(fileBytes, originalFileName);
-        try {
-            String rawContent = readStrippingBom(fileBytes);
-            SubtitleFile subtitleFile = SubtitleFile.parse(originalFileName, rawContent);
+        String rawContent = readStrippingBom(fileBytes);
+        SubtitleFile subtitleFile = SubtitleFile.parse(originalFileName, rawContent);
 
-            List<TranslationEntry> allEntries = subtitleFile.getEntries();
-            int totalBatches = (int) Math.ceil((double) allEntries.size() / BATCH_SIZE);
+        List<TranslationEntry> allEntries = subtitleFile.getEntries();
+        int totalBatches = (int) Math.ceil((double) allEntries.size() / BATCH_SIZE);
 
-            List<TranslatedEntry> allTranslated = translateInBatches(null, allEntries, targetLanguage, totalBatches);
-            subtitleFile.applyTranslations(allTranslated);
+        List<TranslatedEntry> allTranslated = translateInBatches(null, allEntries, targetLanguage, totalBatches);
+        subtitleFile.applyTranslations(allTranslated);
 
-            return subtitleFile.getContent();
-        } finally {
-            Files.deleteIfExists(tempFile);
-        }
+        return subtitleFile.getContent();
     }
 
     /**
@@ -182,16 +162,6 @@ public class TranslationApplicationService {
         }
 
         return allTranslated;
-    }
-
-    private Path saveToFilesystem(byte[] fileBytes, String originalFileName) throws IOException {
-        Path tempDir = Files.createTempDirectory("subtitle-translations");
-        String fileName = (originalFileName != null && !originalFileName.isBlank())
-                ? originalFileName
-                : "subtitle.srt";
-        Path destination = tempDir.resolve(fileName);
-        Files.write(destination, fileBytes);
-        return destination;
     }
 
     /**
