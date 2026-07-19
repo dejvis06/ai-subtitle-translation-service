@@ -156,14 +156,24 @@ public class TranslationApplicationService {
                                                       String targetLanguage,
                                                       int totalBatches) {
         List<TranslatedEntry> allTranslated = new ArrayList<>();
+        int totalSent = 0;
+        int totalReceived = 0;
 
         for (int i = 0; i < entries.size(); i += BATCH_SIZE) {
             int end = Math.min(i + BATCH_SIZE, entries.size());
             List<TranslationEntry> batch = entries.subList(i, end);
             int batchNumber = (i / BATCH_SIZE) + 1;
 
+            totalSent += batch.size();
+            log.info("[Batch {}/{}] Sending {} entries (total sent so far: {})",
+                    batchNumber, totalBatches, batch.size(), totalSent);
+
             List<TranslatedEntry> translated = aiTranslationClient.translate(batch, targetLanguage);
             allTranslated.addAll(translated);
+
+            totalReceived += translated.size();
+            log.info("[Batch {}/{}] Received {} translations (total received so far: {})",
+                    batchNumber, totalBatches, translated.size(), totalReceived);
 
             if (jobId != null) {
                 int percentage = (int) Math.round((double) batchNumber / totalBatches * 100);

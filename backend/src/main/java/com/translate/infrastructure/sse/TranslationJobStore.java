@@ -109,7 +109,7 @@ public class TranslationJobStore implements TranslationProgressPort {
      * drains the job's event queue and pushes each event to the emitter.
      */
     public SseEmitter subscribe(String jobId) {
-        SseEmitter emitter = new SseEmitter(10 * 60 * 1000L); // 10-minute timeout
+        SseEmitter emitter = new SseEmitter(30 * 60 * 1000L); // 30-minute timeout
 
         JobEntry entry = jobs.get(jobId);
         if (entry == null) {
