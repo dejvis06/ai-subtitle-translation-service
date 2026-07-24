@@ -65,6 +65,32 @@ public class TranslationController {
     }
 
     // -------------------------------------------------------------------------
+    // POST /api/translations/{jobId}/restart — resume a failed job
+    // -------------------------------------------------------------------------
+
+    @Operation(
+            summary = "Restart a failed translation job",
+            description = "Resumes processing from the last successfully completed batch. " +
+                    "Only valid for jobs that failed with a saved snapshot. " +
+                    "Re-subscribe to /{jobId}/events after calling this.",
+            responses = {
+                    @ApiResponse(responseCode = "202", description = "Restart accepted"),
+                    @ApiResponse(responseCode = "404", description = "Job not found or no restart snapshot available")
+            }
+    )
+    @PostMapping("/{jobId}/restart")
+    public ResponseEntity<Map<String, String>> restart(@PathVariable String jobId) {
+        if (jobStore.getFailedSnapshot(jobId).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        jobStore.resetJob(jobId);
+        translationApplicationService.restartTranslation(jobId);
+
+        return ResponseEntity.accepted().body(Map.of("jobId", jobId));
+    }
+
+    // -------------------------------------------------------------------------
     // GET /api/translations/{jobId}/events — SSE progress stream
     // -------------------------------------------------------------------------
 

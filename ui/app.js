@@ -42,6 +42,7 @@ const newTranslationBtn = document.getElementById('new-translation-btn');
 
 const errorState        = document.getElementById('error-state');
 const errorText         = document.getElementById('error-text');
+const resumeBtn         = document.getElementById('resume-btn');
 const retryBtn          = document.getElementById('retry-btn');
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -264,7 +265,8 @@ function connectSSE(jobId) {
     currentEventSrc = null;
     let message = 'An error occurred during translation.';
     try { message = JSON.parse(e.data).message || message; } catch (_) {}
-    showError(message);
+    // Server confirmed the job failed — a restart snapshot may be available
+    showError(message, /* canResume */ true);
   });
 
   es.onerror = () => {
@@ -272,7 +274,8 @@ function connectSSE(jobId) {
     if (!doneState.hidden) return;
     es.close();
     currentEventSrc = null;
-    showError('Lost connection to the server. The translation may have failed.');
+    // Connection dropped — we don't know job state, no resume possible
+    showError('Lost connection to the server. The translation may have failed.', /* canResume */ false);
   };
 }
 
@@ -342,7 +345,7 @@ function showDone() {
   errorState.hidden = true;
 }
 
-function showError(message) {
+function showError(message, canResume = false) {
   progressCard.hidden = false;
   uploadCard.hidden   = true;
 
@@ -350,9 +353,10 @@ function showError(message) {
   progressStatusTxt.hidden = true;
   progressBarCont.setAttribute('aria-valuenow', 0);
 
-  errorText.textContent = message;
-  errorState.hidden  = false;
-  doneState.hidden   = true;
+  errorText.textContent  = message;
+  resumeBtn.hidden       = !canResume;
+  errorState.hidden      = false;
+  doneState.hidden       = true;
 }
 
 function resetToUpload() {
@@ -370,8 +374,28 @@ function resetToUpload() {
   refreshTranslateBtn();
 }
 
+async function restartJob() {
+  if (!currentJobId) return;
+
+  const res = await fetch(`${API_BASE}/api/translations/${currentJobId}/restart`, { method: 'POST' });
+
+  if (res.status === 404) {
+    showError('No checkpoint found — please start over.', false);
+    return;
+  }
+  if (!res.ok) {
+    showError(`Restart failed (${res.status}) — please start over.`, false);
+    return;
+  }
+
+  // Reset progress UI and reconnect SSE with the same jobId
+  resetProgressUI();
+  connectSSE(currentJobId);
+}
+
 newTranslationBtn.addEventListener('click', resetToUpload);
 retryBtn.addEventListener('click', resetToUpload);
+resumeBtn.addEventListener('click', restartJob);
 
 /* ─── Boot ──────────────────────────────────────────────────────────────────── */
 // Pre-populate the dropdown with available languages on first focus

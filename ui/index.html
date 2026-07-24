@@ -139,7 +139,14 @@
           </svg>
         </div>
         <p class="error-text" id="error-text">Something went wrong.</p>
-        <button class="btn btn-ghost" id="retry-btn" type="button">Try again</button>
+        <button class="btn btn-primary" id="resume-btn" type="button" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <polyline points="1 4 1 10 7 10"/>
+            <path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+          </svg>
+          Resume from last successful batch
+        </button>
+        <button class="btn btn-ghost" id="retry-btn" type="button">Start over</button>
       </div>
 
     </section>

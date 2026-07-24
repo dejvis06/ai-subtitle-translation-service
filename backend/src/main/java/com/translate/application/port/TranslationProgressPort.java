@@ -1,5 +1,9 @@
 package com.translate.application.port;
 
+import com.translate.application.dto.FailedJobSnapshot;
+
+import java.util.Optional;
+
 /**
  * Application port for reporting translation progress back to the caller.
  *
@@ -12,4 +16,8 @@ public interface TranslationProgressPort {
     void reportComplete(String jobId, String content, String outputFileName);
 
     void reportError(String jobId, String message);
+
+    void saveFailedSnapshot(String jobId, FailedJobSnapshot snapshot);
+
+    Optional<FailedJobSnapshot> getFailedSnapshot(String jobId);
 }

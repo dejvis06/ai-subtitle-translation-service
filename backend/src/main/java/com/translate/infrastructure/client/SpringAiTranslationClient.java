@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 
 import java.util.List;
 
@@ -50,6 +51,11 @@ public class SpringAiTranslationClient implements AiTranslationClient {
         } catch (OpenAIInvalidDataException e) {
             log.error("Invalid OpenAI response (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage(), e);
             if (attempt >= MAX_RETRIES) throw e;
+            return translate(entries, targetLanguage, attempt + 1);
+        } catch (JacksonException e) {
+            log.error("Failed to parse AI response (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage(), e);
+            if (attempt >= MAX_RETRIES)
+                throw new RuntimeException("AI returned unparseable response after " + MAX_RETRIES + " attempts", e);
             return translate(entries, targetLanguage, attempt + 1);
         } catch (OpenAIIoException e) {
             log.error("OpenAI IO error (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage(), e);

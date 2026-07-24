@@ -1,5 +1,6 @@
 package com.translate.infrastructure.sse;
 
+import com.translate.application.dto.FailedJobSnapshot;
 import com.translate.application.port.TranslationProgressPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,7 +53,8 @@ public class TranslationJobStore implements TranslationProgressPort {
 
     private record JobEntry(
             BlockingQueue<JobEvent> events,
-            AtomicReference<TranslationResult> result
+            AtomicReference<TranslationResult> result,
+            AtomicReference<FailedJobSnapshot> failedSnapshot
     ) {}
 
     private final ConcurrentHashMap<String, JobEntry> jobs = new ConcurrentHashMap<>();
@@ -67,7 +69,7 @@ public class TranslationJobStore implements TranslationProgressPort {
 
     public String createJob() {
         String jobId = UUID.randomUUID().toString();
-        jobs.put(jobId, new JobEntry(new LinkedBlockingQueue<>(), new AtomicReference<>()));
+        jobs.put(jobId, new JobEntry(new LinkedBlockingQueue<>(), new AtomicReference<>(), new AtomicReference<>()));
         log.debug("Created translation job {}", jobId);
         return jobId;
     }
@@ -75,6 +77,17 @@ public class TranslationJobStore implements TranslationProgressPort {
     public void removeJob(String jobId) {
         jobs.remove(jobId);
         log.debug("Removed translation job {}", jobId);
+    }
+
+    /**
+     * Resets a failed job so it can be subscribed to again via SSE.
+     * Preserves the existing failed snapshot so restartTranslation can read it.
+     */
+    public void resetJob(String jobId) {
+        JobEntry existing = jobs.get(jobId);
+        if (existing == null) throw new NoSuchElementException("Job not found: " + jobId);
+        jobs.put(jobId, new JobEntry(new LinkedBlockingQueue<>(), new AtomicReference<>(), existing.failedSnapshot()));
+        log.debug("Reset translation job {}", jobId);
     }
 
     // ---------------------------------------------------------------------------
@@ -98,6 +111,22 @@ public class TranslationJobStore implements TranslationProgressPort {
     @Override
     public void reportError(String jobId, String message) {
         enqueue(jobId, new ErrorEvent(message != null ? message : "Unknown error"));
+    }
+
+    @Override
+    public void saveFailedSnapshot(String jobId, FailedJobSnapshot snapshot) {
+        JobEntry entry = jobs.get(jobId);
+        if (entry != null) {
+            entry.failedSnapshot().set(snapshot);
+            log.debug("Saved failed snapshot for job {}", jobId);
+        }
+    }
+
+    @Override
+    public Optional<FailedJobSnapshot> getFailedSnapshot(String jobId) {
+        return Optional.ofNullable(jobs.get(jobId))
+                .map(e -> e.failedSnapshot().get())
+                .filter(Objects::nonNull);
     }
 
     // ---------------------------------------------------------------------------

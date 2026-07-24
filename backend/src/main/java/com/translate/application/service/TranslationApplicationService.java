@@ -1,5 +1,6 @@
 package com.translate.application.service;
 
+import com.translate.application.dto.FailedJobSnapshot;
 import com.translate.application.port.AiTranslationClient;
 import com.translate.application.port.TranslationProgressPort;
 import com.translate.domain.model.SubtitleFile;
@@ -15,6 +16,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -74,8 +76,66 @@ public class TranslationApplicationService {
 
             log.info("[Job {}] Translation complete → {}", jobId, outputFileName);
 
+        } catch (PartialTranslationException e) {
+            log.error("[Job {}] Translation failed at entry index {}: {}", jobId, e.getFailedAtIndex(), e.getMessage(), e);
+            saveSnapshot(jobId, fileBytes, originalFileName, targetLanguage, e);
+            progressPort.reportError(jobId, e.getMessage());
+
         } catch (Exception e) {
             log.error("[Job {}] Translation failed: {}", jobId, e.getMessage(), e);
+            progressPort.reportError(jobId, e.getMessage());
+        }
+
+        return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * Resumes a failed job from its saved snapshot.
+     * The job must have been registered and reset in the job store before calling this.
+     */
+    @Async("translationExecutor")
+    public CompletableFuture<Void> restartTranslation(String jobId) {
+        FailedJobSnapshot snapshot = progressPort.getFailedSnapshot(jobId)
+                .orElseThrow(() -> new NoSuchElementException("No restart snapshot found for job: " + jobId));
+
+        log.info("[Job {}] Restarting from entry index {} ({} remaining, {} already completed)",
+                jobId, snapshot.subtitleFile().getEntries().size() - snapshot.remainingEntries().size(),
+                snapshot.remainingEntries().size(), snapshot.completedTranslations().size());
+
+        try {
+            List<TranslationEntry> remaining = snapshot.remainingEntries();
+            int totalBatches = (int) Math.ceil((double) remaining.size() / BATCH_SIZE);
+
+            List<TranslatedEntry> newTranslations = translateInBatches(jobId, remaining, snapshot.targetLanguage(), totalBatches);
+
+            List<TranslatedEntry> allTranslated = new ArrayList<>(snapshot.completedTranslations());
+            allTranslated.addAll(newTranslations);
+
+            SubtitleFile subtitleFile = snapshot.subtitleFile();
+            subtitleFile.applyTranslations(allTranslated);
+
+            String outputFileName = buildOutputFileName(snapshot.originalFileName(), snapshot.targetLanguage());
+            progressPort.reportComplete(jobId, subtitleFile.getContent(), outputFileName);
+
+            log.info("[Job {}] Restart complete → {}", jobId, outputFileName);
+
+        } catch (PartialTranslationException e) {
+            log.error("[Job {}] Restart failed again at index {}: {}", jobId, e.getFailedAtIndex(), e.getMessage(), e);
+
+            // Merge already-completed translations with new partial progress and update snapshot
+            List<TranslatedEntry> mergedCompleted = new ArrayList<>(snapshot.completedTranslations());
+            mergedCompleted.addAll(e.getCompletedTranslations());
+            List<TranslationEntry> newRemaining = snapshot.remainingEntries()
+                    .subList(e.getFailedAtIndex(), snapshot.remainingEntries().size());
+
+            progressPort.saveFailedSnapshot(jobId, new FailedJobSnapshot(
+                    snapshot.subtitleFile(), List.copyOf(mergedCompleted), List.copyOf(newRemaining),
+                    snapshot.targetLanguage(), snapshot.originalFileName()));
+
+            progressPort.reportError(jobId, e.getMessage());
+
+        } catch (Exception e) {
+            log.error("[Job {}] Restart failed: {}", jobId, e.getMessage(), e);
             progressPort.reportError(jobId, e.getMessage());
         }
 
@@ -130,6 +190,8 @@ public class TranslationApplicationService {
     /**
      * Splits entries into batches, translates each, and reports progress.
      * When jobId is null (sync/test path) progress reporting is skipped.
+     * Throws {@link PartialTranslationException} on failure, carrying all translations
+     * completed before the failing batch and the index into {@code entries} where it failed.
      */
     private List<TranslatedEntry> translateInBatches(String jobId,
                                                       List<TranslationEntry> entries,
@@ -148,20 +210,47 @@ public class TranslationApplicationService {
             log.info("[Batch {}/{}] Sending {} entries (total sent so far: {})",
                     batchNumber, totalBatches, batch.size(), totalSent);
 
-            List<TranslatedEntry> translated = aiTranslationClient.translate(batch, targetLanguage);
-            allTranslated.addAll(translated);
+            try {
+                List<TranslatedEntry> translated = aiTranslationClient.translate(batch, targetLanguage);
+                allTranslated.addAll(translated);
 
-            totalReceived += translated.size();
-            log.info("[Batch {}/{}] Received {} translations (total received so far: {})",
-                    batchNumber, totalBatches, translated.size(), totalReceived);
+                totalReceived += translated.size();
+                log.info("[Batch {}/{}] Received {} translations (total received so far: {})",
+                        batchNumber, totalBatches, translated.size(), totalReceived);
 
-            if (jobId != null) {
-                int percentage = (int) Math.round((double) batchNumber / totalBatches * 100);
-                progressPort.reportProgress(jobId, percentage, batchNumber, totalBatches);
+                if (jobId != null) {
+                    int percentage = (int) Math.round((double) batchNumber / totalBatches * 100);
+                    progressPort.reportProgress(jobId, percentage, batchNumber, totalBatches);
+                }
+            } catch (Exception e) {
+                throw new PartialTranslationException(e.getMessage(), e, List.copyOf(allTranslated), i);
             }
         }
 
         return allTranslated;
+    }
+
+    /**
+     * Re-parses the original file bytes and saves a {@link FailedJobSnapshot}
+     * so the job can be restarted from the failing entry index.
+     */
+    private void saveSnapshot(String jobId, byte[] fileBytes, String originalFileName,
+                               String targetLanguage, PartialTranslationException e) {
+        try {
+            String rawContent = readStrippingBom(fileBytes);
+            SubtitleFile subtitleFile = SubtitleFile.parse(originalFileName, rawContent);
+            List<TranslationEntry> remaining = subtitleFile.getEntries()
+                    .subList(e.getFailedAtIndex(), subtitleFile.getEntries().size());
+
+            progressPort.saveFailedSnapshot(jobId, new FailedJobSnapshot(
+                    subtitleFile, List.copyOf(e.getCompletedTranslations()),
+                    List.copyOf(remaining), targetLanguage, originalFileName));
+
+            log.info("[Job {}] Saved restart snapshot: {} completed, {} remaining",
+                    jobId, e.getCompletedTranslations().size(), remaining.size());
+        } catch (Exception snapshotEx) {
+            log.error("[Job {}] Failed to save restart snapshot: {}", jobId, snapshotEx.getMessage(), snapshotEx);
+        }
     }
 
     /**
