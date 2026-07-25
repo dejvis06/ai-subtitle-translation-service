@@ -1,13 +1,14 @@
 package com.translate.infrastructure.client;
 
-import com.openai.errors.OpenAIInvalidDataException;
-import com.openai.errors.OpenAIIoException;
+import com.google.genai.errors.ApiException;
+import com.google.genai.errors.GenAiIOException;
 import com.translate.application.port.AiTranslationClient;
 import com.translate.domain.model.TranslatedEntry;
 import com.translate.domain.model.TranslationEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -15,22 +16,24 @@ import tools.jackson.core.JacksonException;
 import java.util.List;
 
 /**
- * Infrastructure implementation of AiTranslationClient using Spring AI's ChatClient.
+ * Infrastructure implementation of AiTranslationClient using Spring AI's ChatClient
+ * backed by Google Gemini via the Google GenAI API.
  * <p>
- * Sends a batch of TranslationEntry objects to the AI and receives
+ * Sends a batch of TranslationEntry objects to Gemini and receives
  * a structured list of TranslatedEntry objects using Spring AI structured output.
+ * <p>
  */
-@Component
-public class SpringAiTranslationClient implements AiTranslationClient {
+@Component("geminiTranslationClient")
+public class GeminiTranslationClient implements AiTranslationClient {
 
-    private static final Logger log = LoggerFactory.getLogger(SpringAiTranslationClient.class);
+    private static final Logger log = LoggerFactory.getLogger(GeminiTranslationClient.class);
 
     private static final int MAX_RETRIES = 3;
     private static final long RETRY_DELAY_MS = 2_000;
 
     private final ChatClient chatClient;
 
-    public SpringAiTranslationClient(ChatClient chatClient) {
+    public GeminiTranslationClient(@Qualifier("geminiAssistant") ChatClient chatClient) {
         this.chatClient = chatClient;
     }
 
@@ -48,17 +51,13 @@ public class SpringAiTranslationClient implements AiTranslationClient {
                     .call()
                     .entity(new ParameterizedTypeReference<List<TranslatedEntry>>() {
                     });
-        } catch (OpenAIInvalidDataException e) {
-            log.error("Invalid OpenAI response (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage(), e);
-            if (attempt >= MAX_RETRIES) throw e;
-            return translate(entries, targetLanguage, attempt + 1);
         } catch (JacksonException e) {
-            log.error("Failed to parse AI response (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage(), e);
+            log.error("Failed to parse Gemini response (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage(), e);
             if (attempt >= MAX_RETRIES)
-                throw new RuntimeException("AI returned unparseable response after " + MAX_RETRIES + " attempts", e);
+                throw new RuntimeException("Gemini returned unparseable response after " + MAX_RETRIES + " attempts", e);
             return translate(entries, targetLanguage, attempt + 1);
-        } catch (OpenAIIoException e) {
-            log.error("OpenAI IO error (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage(), e);
+        } catch (RuntimeException e) {
+            log.error("Gemini unexpected error (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage(), e);
             if (attempt >= MAX_RETRIES) throw e;
             sleep();
             return translate(entries, targetLanguage, attempt + 1);

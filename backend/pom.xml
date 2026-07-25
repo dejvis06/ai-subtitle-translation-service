@@ -55,6 +55,12 @@
 			<artifactId>spring-ai-starter-model-openai</artifactId>
 		</dependency>
 
+		<!-- Spring AI Google GenAI (Gemini) -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-google-genai</artifactId>
+		</dependency>
+
 		<!-- Swagger / OpenAPI UI -->
 		<dependency>
 			<groupId>org.springdoc</groupId>

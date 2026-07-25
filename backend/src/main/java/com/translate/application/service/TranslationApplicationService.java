@@ -1,5 +1,6 @@
 package com.translate.application.service;
 
+import com.translate.application.dto.AiProvider;
 import com.translate.application.dto.FailedJobSnapshot;
 import com.translate.application.port.AiTranslationClient;
 import com.translate.application.port.TranslationProgressPort;
@@ -8,6 +9,7 @@ import com.translate.domain.model.TranslatedEntry;
 import com.translate.domain.model.TranslationEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -34,13 +36,24 @@ public class TranslationApplicationService {
     private static final Logger log = LoggerFactory.getLogger(TranslationApplicationService.class);
     private static final int BATCH_SIZE = 20;
 
-    private final AiTranslationClient aiTranslationClient;
+    private final AiTranslationClient openaiClient;
+    private final AiTranslationClient geminiClient;
     private final TranslationProgressPort progressPort;
 
-    public TranslationApplicationService(AiTranslationClient aiTranslationClient,
-                                          TranslationProgressPort progressPort) {
-        this.aiTranslationClient = aiTranslationClient;
+    public TranslationApplicationService(
+            @Qualifier("openaiTranslationClient") AiTranslationClient openaiClient,
+            @Qualifier("geminiTranslationClient") AiTranslationClient geminiClient,
+            TranslationProgressPort progressPort) {
+        this.openaiClient = openaiClient;
+        this.geminiClient = geminiClient;
         this.progressPort = progressPort;
+    }
+
+    private AiTranslationClient selectClient(AiProvider provider) {
+        return switch (provider) {
+            case OPENAI -> openaiClient;
+            case GEMINI -> geminiClient;
+        };
     }
 
     /**
@@ -56,8 +69,9 @@ public class TranslationApplicationService {
     public CompletableFuture<Void> translateAsync(String jobId,
                                                    byte[] fileBytes,
                                                    String originalFileName,
-                                                   String targetLanguage) {
-        log.info("[Job {}] Starting translation of '{}' into {}", jobId, originalFileName, targetLanguage);
+                                                   String targetLanguage,
+                                                   AiProvider aiProvider) {
+        log.info("[Job {}] Starting translation of '{}' into {} via {}", jobId, originalFileName, targetLanguage, aiProvider);
 
         try {
             String rawContent = readStrippingBom(fileBytes);
@@ -68,7 +82,8 @@ public class TranslationApplicationService {
 
             log.info("[Job {}] Parsed {} subtitle entries → {} batch(es)", jobId, allEntries.size(), totalBatches);
 
-            List<TranslatedEntry> allTranslated = translateInBatches(jobId, allEntries, targetLanguage, totalBatches);
+            AiTranslationClient client = selectClient(aiProvider);
+            List<TranslatedEntry> allTranslated = translateInBatches(jobId, allEntries, targetLanguage, totalBatches, client);
             subtitleFile.applyTranslations(allTranslated);
 
             String outputFileName = buildOutputFileName(originalFileName, targetLanguage);
@@ -78,7 +93,7 @@ public class TranslationApplicationService {
 
         } catch (PartialTranslationException e) {
             log.error("[Job {}] Translation failed at entry index {}: {}", jobId, e.getFailedAtIndex(), e.getMessage(), e);
-            saveSnapshot(jobId, fileBytes, originalFileName, targetLanguage, e);
+            saveSnapshot(jobId, fileBytes, originalFileName, targetLanguage, aiProvider, e);
             progressPort.reportError(jobId, e.getMessage());
 
         } catch (Exception e) {
@@ -98,15 +113,16 @@ public class TranslationApplicationService {
         FailedJobSnapshot snapshot = progressPort.getFailedSnapshot(jobId)
                 .orElseThrow(() -> new NoSuchElementException("No restart snapshot found for job: " + jobId));
 
-        log.info("[Job {}] Restarting from entry index {} ({} remaining, {} already completed)",
+        log.info("[Job {}] Restarting from entry index {} ({} remaining, {} already completed) via {}",
                 jobId, snapshot.subtitleFile().getEntries().size() - snapshot.remainingEntries().size(),
-                snapshot.remainingEntries().size(), snapshot.completedTranslations().size());
+                snapshot.remainingEntries().size(), snapshot.completedTranslations().size(), snapshot.aiProvider());
 
         try {
             List<TranslationEntry> remaining = snapshot.remainingEntries();
             int totalBatches = (int) Math.ceil((double) remaining.size() / BATCH_SIZE);
 
-            List<TranslatedEntry> newTranslations = translateInBatches(jobId, remaining, snapshot.targetLanguage(), totalBatches);
+            AiTranslationClient client = selectClient(snapshot.aiProvider());
+            List<TranslatedEntry> newTranslations = translateInBatches(jobId, remaining, snapshot.targetLanguage(), totalBatches, client);
 
             List<TranslatedEntry> allTranslated = new ArrayList<>(snapshot.completedTranslations());
             allTranslated.addAll(newTranslations);
@@ -130,7 +146,7 @@ public class TranslationApplicationService {
 
             progressPort.saveFailedSnapshot(jobId, new FailedJobSnapshot(
                     snapshot.subtitleFile(), List.copyOf(mergedCompleted), List.copyOf(newRemaining),
-                    snapshot.targetLanguage(), snapshot.originalFileName()));
+                    snapshot.targetLanguage(), snapshot.originalFileName(), snapshot.aiProvider()));
 
             progressPort.reportError(jobId, e.getMessage());
 
@@ -158,7 +174,7 @@ public class TranslationApplicationService {
         List<TranslationEntry> allEntries = subtitleFile.getEntries();
         int totalBatches = (int) Math.ceil((double) allEntries.size() / BATCH_SIZE);
 
-        List<TranslatedEntry> allTranslated = translateInBatches(null, allEntries, targetLanguage, totalBatches);
+        List<TranslatedEntry> allTranslated = translateInBatches(null, allEntries, targetLanguage, totalBatches, openaiClient);
         subtitleFile.applyTranslations(allTranslated);
 
         return subtitleFile.getContent();
@@ -196,7 +212,8 @@ public class TranslationApplicationService {
     private List<TranslatedEntry> translateInBatches(String jobId,
                                                       List<TranslationEntry> entries,
                                                       String targetLanguage,
-                                                      int totalBatches) {
+                                                      int totalBatches,
+                                                      AiTranslationClient client) {
         List<TranslatedEntry> allTranslated = new ArrayList<>();
         int totalSent = 0;
         int totalReceived = 0;
@@ -211,7 +228,7 @@ public class TranslationApplicationService {
                     batchNumber, totalBatches, batch.size(), totalSent);
 
             try {
-                List<TranslatedEntry> translated = aiTranslationClient.translate(batch, targetLanguage);
+                List<TranslatedEntry> translated = client.translate(batch, targetLanguage);
                 allTranslated.addAll(translated);
 
                 totalReceived += translated.size();
@@ -235,7 +252,7 @@ public class TranslationApplicationService {
      * so the job can be restarted from the failing entry index.
      */
     private void saveSnapshot(String jobId, byte[] fileBytes, String originalFileName,
-                               String targetLanguage, PartialTranslationException e) {
+                               String targetLanguage, AiProvider aiProvider, PartialTranslationException e) {
         try {
             String rawContent = readStrippingBom(fileBytes);
             SubtitleFile subtitleFile = SubtitleFile.parse(originalFileName, rawContent);
@@ -244,7 +261,7 @@ public class TranslationApplicationService {
 
             progressPort.saveFailedSnapshot(jobId, new FailedJobSnapshot(
                     subtitleFile, List.copyOf(e.getCompletedTranslations()),
-                    List.copyOf(remaining), targetLanguage, originalFileName));
+                    List.copyOf(remaining), targetLanguage, originalFileName, aiProvider));
 
             log.info("[Job {}] Saved restart snapshot: {} completed, {} remaining",
                     jobId, e.getCompletedTranslations().size(), remaining.size());

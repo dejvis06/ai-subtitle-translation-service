@@ -8,9 +8,10 @@ const LANGUAGES = [
 ];
 
 /* ─── State ─────────────────────────────────────────────────────────────────── */
-let selectedFile    = null;
-let selectedLang    = '';
-let currentJobId    = null;
+let selectedFile     = null;
+let selectedLang     = '';
+let selectedProvider = 'OPENAI';
+let currentJobId     = null;
 let currentEventSrc = null;
 let blobDownloadUrl = null;   // kept alive so the manual button can re-use it
 let blobFilename    = null;
@@ -21,6 +22,8 @@ const fileInput         = document.getElementById('file-input');
 const fileBadge         = document.getElementById('file-badge');
 const fileNameDisplay   = document.getElementById('file-name-display');
 const removeFileBtn     = document.getElementById('remove-file');
+
+const providerSelect    = document.getElementById('provider-select');
 
 const langInput         = document.getElementById('language-input');
 const langListbox       = document.getElementById('language-listbox');
@@ -197,6 +200,10 @@ function refreshTranslateBtn() {
   translateBtn.disabled = !(selectedFile && selectedLang);
 }
 
+providerSelect.addEventListener('change', () => {
+  selectedProvider = providerSelect.value;
+});
+
 translateBtn.addEventListener('click', startTranslation);
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -216,6 +223,7 @@ async function startTranslation() {
     const formData = new FormData();
     formData.append('file', selectedFile);
     formData.append('translateTo', selectedLang);
+    formData.append('aiProvider', selectedProvider);
 
     const res = await fetch(`${API_BASE}/api/translations`, {
       method: 'POST',
@@ -371,6 +379,8 @@ function resetToUpload() {
   clearFile();
   selectedLang = '';
   langInput.value = '';
+  selectedProvider = 'OPENAI';
+  providerSelect.value = 'OPENAI';
   refreshTranslateBtn();
 }
 

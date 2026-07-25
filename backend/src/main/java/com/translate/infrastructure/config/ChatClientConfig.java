@@ -1,7 +1,8 @@
 package com.translate.infrastructure.config;
 
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.google.genai.GoogleGenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -43,7 +44,14 @@ class ChatClientConfig {
             """;
 
     @Bean
-    ChatClient assistant(OpenAiChatModel chatModel) {
+    ChatClient openaiAssistant(OpenAiChatModel chatModel) {
+        return ChatClient.builder(chatModel)
+                .defaultSystem(SYSTEM_PROMPT)
+                .build();
+    }
+
+    @Bean
+    ChatClient geminiAssistant(GoogleGenAiChatModel chatModel) {
         return ChatClient.builder(chatModel)
                 .defaultSystem(SYSTEM_PROMPT)
                 .build();

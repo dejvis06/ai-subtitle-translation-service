@@ -1,15 +1,16 @@
 package com.translate.application.service;
 
+import com.translate.application.dto.AiProvider;
 import com.translate.application.dto.FailedJobSnapshot;
 import com.translate.application.port.AiTranslationClient;
 import com.translate.application.port.TranslationProgressPort;
 import com.translate.domain.model.SubtitleFile;
 import com.translate.domain.model.TranslatedEntry;
 import com.translate.domain.model.TranslationEntry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
@@ -36,10 +37,17 @@ class TranslationApplicationServiceTest {
     AiTranslationClient aiTranslationClient;
 
     @Mock
+    AiTranslationClient geminiClient;
+
+    @Mock
     TranslationProgressPort progressPort;
 
-    @InjectMocks
     TranslationApplicationService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new TranslationApplicationService(aiTranslationClient, geminiClient, progressPort);
+    }
 
     @Test
     void shouldTranslateSubtitleFileToAlbanian() throws IOException {
@@ -248,7 +256,7 @@ class TranslationApplicationServiceTest {
                 new TranslationEntry("{{TRANSLATION_2}}", "Hi. I have an appointment with...")
         );
 
-        return new FailedJobSnapshot(subtitleFile, completed, remaining, "Albanian", "movie.srt");
+        return new FailedJobSnapshot(subtitleFile, completed, remaining, "Albanian", "movie.srt", AiProvider.OPENAI);
     }
 
     private String loadSrtContent(String filename) throws IOException {

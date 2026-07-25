@@ -1,5 +1,6 @@
 package com.translate.application.dto;
 
+import com.translate.application.dto.AiProvider;
 import com.translate.domain.model.SubtitleFile;
 import com.translate.domain.model.TranslatedEntry;
 import com.translate.domain.model.TranslationEntry;
@@ -15,5 +16,6 @@ public record FailedJobSnapshot(
         List<TranslatedEntry> completedTranslations,
         List<TranslationEntry> remainingEntries,
         String targetLanguage,
-        String originalFileName
+        String originalFileName,
+        AiProvider aiProvider
 ) {}

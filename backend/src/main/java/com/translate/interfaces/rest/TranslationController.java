@@ -1,5 +1,6 @@
 package com.translate.interfaces.rest;
 
+import com.translate.application.dto.AiProvider;
 import com.translate.application.service.TranslationApplicationService;
 import com.translate.infrastructure.sse.TranslationJobStore;
 import io.swagger.v3.oas.annotations.Operation;
@@ -50,7 +51,10 @@ public class TranslationController {
             @RequestParam("file") MultipartFile file,
 
             @Parameter(description = "Target language (e.g. Albanian, Spanish, French)", required = true)
-            @RequestParam("translateTo") String translateTo
+            @RequestParam("translateTo") String translateTo,
+
+            @Parameter(description = "AI provider to use for translation (OPENAI or GEMINI)", required = true)
+            @RequestParam("aiProvider") AiProvider aiProvider
     ) throws IOException {
         String jobId = jobStore.createJob();
 
@@ -59,7 +63,7 @@ public class TranslationController {
                 ? file.getOriginalFilename()
                 : "subtitle.srt";
 
-        translationApplicationService.translateAsync(jobId, fileBytes, originalFileName, translateTo);
+        translationApplicationService.translateAsync(jobId, fileBytes, originalFileName, translateTo, aiProvider);
 
         return ResponseEntity.accepted().body(Map.of("jobId", jobId));
     }
