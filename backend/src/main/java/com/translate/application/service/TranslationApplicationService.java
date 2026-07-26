@@ -244,6 +244,10 @@ public class TranslationApplicationService {
                     progressPort.reportProgress(jobId, percentage, batchNumber, totalBatches);
                 }
             } catch (Exception e) {
+                TranslationEntry first = batch.getFirst();
+                String subtitleNumber = first.placeholder().replaceAll("[^0-9]", "");
+                log.error("[Batch {}/{}] Failed at subtitle #{}:\n{}",
+                        batchNumber, totalBatches, subtitleNumber, first.originalText());
                 throw new PartialTranslationException(e.getMessage(), e, List.copyOf(allTranslated), i);
             }
         }
