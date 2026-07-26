@@ -170,7 +170,7 @@ The job is removed from memory after the file is retrieved.
 
 ## Running the Service
 
-Set your OpenAI API key, then start the application from the `backend/` directory:
+Set your OpenAI or Gemini API key, then start the application from the `backend/` directory:
 
 **PowerShell**
 ```powershell

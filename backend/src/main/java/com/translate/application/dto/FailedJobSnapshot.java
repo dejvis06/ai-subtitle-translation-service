@@ -10,6 +10,9 @@ import java.util.List;
 /**
  * Captures the state of a partially completed translation job at the point of failure.
  * Stored by the infrastructure layer and used to resume processing from where it left off.
+ *
+ * {@code partialSrtContent} and {@code partialFileName} hold a ready-to-download SRT
+ * where completed entries carry translated text and remaining entries carry original text.
  */
 public record FailedJobSnapshot(
         SubtitleFile subtitleFile,
@@ -17,5 +20,7 @@ public record FailedJobSnapshot(
         List<TranslationEntry> remainingEntries,
         String targetLanguage,
         String originalFileName,
-        AiProvider aiProvider
+        AiProvider aiProvider,
+        String partialSrtContent,
+        String partialFileName
 ) {}

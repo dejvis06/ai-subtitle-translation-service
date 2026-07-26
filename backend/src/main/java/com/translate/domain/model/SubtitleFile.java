@@ -70,7 +70,7 @@ public class SubtitleFile {
                     }
 
                     if (!textLines.isEmpty()) {
-                        String originalText = String.join("\n", textLines);
+                        String originalText = normalize(String.join("\n", textLines));
                         String placeholder = PLACEHOLDER_FORMAT.formatted(subtitleNumber);
 
                         entries.add(new TranslationEntry(placeholder, originalText));
@@ -98,6 +98,26 @@ public class SubtitleFile {
         }
     }
 
+    /**
+     * Produces a partial SRT string without modifying this instance.
+     * Completed placeholders are replaced with their translated text;
+     * remaining placeholders are restored to their original subtitle text.
+     *
+     * @param completed  translations that succeeded
+     * @param remaining  entries that were not yet translated
+     * @return a valid SRT content string mixing translated and original text
+     */
+    public String computePartialContent(List<TranslatedEntry> completed, List<TranslationEntry> remaining) {
+        String partial = this.content;
+        for (TranslatedEntry entry : completed) {
+            partial = partial.replace(entry.placeholder(), entry.translatedText());
+        }
+        for (TranslationEntry entry : remaining) {
+            partial = partial.replace(entry.placeholder(), entry.originalText());
+        }
+        return partial;
+    }
+
     public String getOriginalFileName() {
         return originalFileName;
     }
@@ -108,6 +128,18 @@ public class SubtitleFile {
 
     public List<TranslationEntry> getEntries() {
         return List.copyOf(entries);
+    }
+
+    /**
+     * Normalizes raw subtitle text at parse time so all TranslationEntry objects
+     * carry clean, plain text safe to embed in the AI message.
+     * Keeps only Unicode letters, digits, whitespace (including newlines), and dashes.
+     * Everything else — tags, symbols, quotes, punctuation — is stripped.
+     */
+    private static String normalize(String text) {
+        return text
+                .replaceAll("[^\\p{L}\\p{N}\\s\\-]", "") // keep only letters, digits, whitespace, dashes
+                .strip();
     }
 
     private static boolean isSubtitleNumber(String line) {

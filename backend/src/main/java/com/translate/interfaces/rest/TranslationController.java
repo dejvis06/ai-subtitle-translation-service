@@ -108,6 +108,40 @@ public class TranslationController {
     }
 
     // -------------------------------------------------------------------------
+    // GET /api/translations/{jobId}/partial — download partial result on failure
+    // -------------------------------------------------------------------------
+
+    @Operation(
+            summary = "Download a partial .srt file after a failed job",
+            description = "Returns an SRT file where completed entries contain translated text " +
+                    "and remaining entries contain the original subtitle text. " +
+                    "Available after a job has failed and a snapshot has been saved.",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "Partial .srt file",
+                            content = @Content(mediaType = "application/x-subrip")
+                    ),
+                    @ApiResponse(responseCode = "404", description = "Job not found or no partial result available")
+            }
+    )
+    @GetMapping("/{jobId}/partial")
+    public ResponseEntity<byte[]> downloadPartial(@PathVariable String jobId) {
+        return jobStore.getFailedSnapshot(jobId)
+                .filter(s -> s.partialSrtContent() != null)
+                .map(snapshot -> {
+                    byte[] bytes = snapshot.partialSrtContent().getBytes(StandardCharsets.UTF_8);
+                    return ResponseEntity.ok()
+                            .header(HttpHeaders.CONTENT_DISPOSITION,
+                                    "attachment; filename=\"" + snapshot.partialFileName() + "\"")
+                            .contentType(MediaType.parseMediaType("application/x-subrip"))
+                            .contentLength(bytes.length)
+                            .body(bytes);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // -------------------------------------------------------------------------
     // GET /api/translations/{jobId}/download — retrieve the translated file
     // -------------------------------------------------------------------------
 

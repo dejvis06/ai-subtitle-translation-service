@@ -43,10 +43,11 @@ const doneState         = document.getElementById('done-state');
 const downloadBtn       = document.getElementById('download-btn');
 const newTranslationBtn = document.getElementById('new-translation-btn');
 
-const errorState        = document.getElementById('error-state');
-const errorText         = document.getElementById('error-text');
-const resumeBtn         = document.getElementById('resume-btn');
-const retryBtn          = document.getElementById('retry-btn');
+const errorState           = document.getElementById('error-state');
+const errorText            = document.getElementById('error-text');
+const resumeBtn            = document.getElementById('resume-btn');
+const downloadPartialBtn   = document.getElementById('download-partial-btn');
+const retryBtn             = document.getElementById('retry-btn');
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    FILE HANDLING
@@ -361,10 +362,11 @@ function showError(message, canResume = false) {
   progressStatusTxt.hidden = true;
   progressBarCont.setAttribute('aria-valuenow', 0);
 
-  errorText.textContent  = message;
-  resumeBtn.hidden       = !canResume;
-  errorState.hidden      = false;
-  doneState.hidden       = true;
+  errorText.textContent        = message;
+  resumeBtn.hidden             = !canResume;
+  downloadPartialBtn.hidden    = !canResume;
+  errorState.hidden            = false;
+  doneState.hidden             = true;
 }
 
 function resetToUpload() {
@@ -406,6 +408,28 @@ async function restartJob() {
 newTranslationBtn.addEventListener('click', resetToUpload);
 retryBtn.addEventListener('click', resetToUpload);
 resumeBtn.addEventListener('click', restartJob);
+downloadPartialBtn.addEventListener('click', downloadPartial);
+
+async function downloadPartial() {
+  if (!currentJobId) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/translations/${currentJobId}/partial`);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : 'partial.srt';
+
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Could not download partial file: ' + err.message);
+  }
+}
 
 /* ─── Boot ──────────────────────────────────────────────────────────────────── */
 // Pre-populate the dropdown with available languages on first focus
