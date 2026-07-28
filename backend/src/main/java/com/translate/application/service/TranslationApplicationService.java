@@ -144,13 +144,19 @@ public class TranslationApplicationService {
             List<TranslationEntry> newRemaining = snapshot.remainingEntries()
                     .subList(e.getFailedAtIndex(), snapshot.remainingEntries().size());
 
-            String partialContent = snapshot.subtitleFile()
-                    .computePartialContent(List.copyOf(mergedCompleted), List.copyOf(newRemaining));
+            List<TranslatedEntry> mergedCompletedCopy = List.copyOf(mergedCompleted);
+            List<TranslationEntry> newRemainingCopy = List.copyOf(newRemaining);
+
+            SubtitleFile subtitleFile = snapshot.subtitleFile();
+            String completedContent = subtitleFile.computeCompletedContent(mergedCompletedCopy);
+            String remainingContent = subtitleFile.computeRemainingContent(newRemainingCopy);
+            String baseName = baseNameWithoutExtension(snapshot.originalFileName());
 
             progressPort.saveFailedSnapshot(jobId, new FailedJobSnapshot(
-                    snapshot.subtitleFile(), List.copyOf(mergedCompleted), List.copyOf(newRemaining),
+                    subtitleFile, mergedCompletedCopy, newRemainingCopy,
                     snapshot.targetLanguage(), snapshot.originalFileName(), snapshot.aiProvider(),
-                    partialContent, snapshot.partialFileName()));
+                    completedContent, baseName + "." + snapshot.targetLanguage() + ".completed.srt",
+                    remainingContent, baseName + ".remaining.srt"));
 
             progressPort.reportError(jobId, e.getMessage());
 
@@ -258,7 +264,7 @@ public class TranslationApplicationService {
     /**
      * Re-parses the original file bytes and saves a {@link FailedJobSnapshot}
      * so the job can be restarted from the failing entry index.
-     * Also computes a partial SRT (translated + original text for remaining) for immediate download.
+     * Computes two separate SRT files: one for completed translations, one for remaining originals.
      */
     private void saveSnapshot(String jobId, byte[] fileBytes, String originalFileName,
                                String targetLanguage, AiProvider aiProvider, PartialTranslationException e) {
@@ -268,36 +274,30 @@ public class TranslationApplicationService {
             List<TranslationEntry> remaining = subtitleFile.getEntries()
                     .subList(e.getFailedAtIndex(), subtitleFile.getEntries().size());
 
-            String partialContent = subtitleFile.computePartialContent(
-                    List.copyOf(e.getCompletedTranslations()), List.copyOf(remaining));
-            String partialFileName = buildPartialFileName(originalFileName, targetLanguage);
+            List<TranslatedEntry> completed = List.copyOf(e.getCompletedTranslations());
+            List<TranslationEntry> remainingCopy = List.copyOf(remaining);
+
+            String completedContent = subtitleFile.computeCompletedContent(completed);
+            String remainingContent = subtitleFile.computeRemainingContent(remainingCopy);
+            String baseName = baseNameWithoutExtension(originalFileName);
+            String completedFileName = baseName + "." + targetLanguage + ".completed.srt";
+            String remainingFileName = baseName + ".remaining.srt";
 
             progressPort.saveFailedSnapshot(jobId, new FailedJobSnapshot(
-                    subtitleFile, List.copyOf(e.getCompletedTranslations()),
-                    List.copyOf(remaining), targetLanguage, originalFileName, aiProvider,
-                    partialContent, partialFileName));
+                    subtitleFile, completed, remainingCopy, targetLanguage, originalFileName, aiProvider,
+                    completedContent, completedFileName, remainingContent, remainingFileName));
 
-            log.info("[Job {}] Saved restart snapshot: {} completed, {} remaining. Partial file: {}",
-                    jobId, e.getCompletedTranslations().size(), remaining.size(), partialFileName);
+            log.info("[Job {}] Saved restart snapshot: {} completed, {} remaining.",
+                    jobId, completed.size(), remainingCopy.size());
         } catch (Exception snapshotEx) {
             log.error("[Job {}] Failed to save restart snapshot: {}", jobId, snapshotEx.getMessage(), snapshotEx);
         }
     }
 
-    /**
-     * Builds the partial output file name: original name with target language and ".partial" appended.
-     * Example: movie.srt + Albanian → movie.Albanian.partial.srt
-     */
-    private String buildPartialFileName(String originalFileName, String targetLanguage) {
-        if (originalFileName == null || originalFileName.isBlank()) {
-            return "translated." + targetLanguage + ".partial.srt";
-        }
-        int dotIndex = originalFileName.lastIndexOf('.');
-        if (dotIndex < 0) {
-            return originalFileName + "." + targetLanguage + ".partial.srt";
-        }
-        String nameWithoutExt = originalFileName.substring(0, dotIndex);
-        return nameWithoutExt + "." + targetLanguage + ".partial.srt";
+    private static String baseNameWithoutExtension(String fileName) {
+        if (fileName == null || fileName.isBlank()) return "subtitle";
+        int dot = fileName.lastIndexOf('.');
+        return dot < 0 ? fileName : fileName.substring(0, dot);
     }
 
     /**

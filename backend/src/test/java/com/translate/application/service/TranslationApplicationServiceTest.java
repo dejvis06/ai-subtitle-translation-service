@@ -256,9 +256,10 @@ class TranslationApplicationServiceTest {
                 new TranslationEntry("{{TRANSLATION_2}}", "Hi. I have an appointment with...")
         );
 
-        String partialContent = subtitleFile.computePartialContent(completed, remaining);
+        String completedContent = subtitleFile.computeCompletedContent(completed);
+        String remainingContent = subtitleFile.computeRemainingContent(remaining);
         return new FailedJobSnapshot(subtitleFile, completed, remaining, "Albanian", "movie.srt", AiProvider.OPENAI,
-                partialContent, "movie.Albanian.partial.srt");
+                completedContent, "movie.Albanian.completed.srt", remainingContent, "movie.remaining.srt");
     }
 
     private String loadSrtContent(String filename) throws IOException {

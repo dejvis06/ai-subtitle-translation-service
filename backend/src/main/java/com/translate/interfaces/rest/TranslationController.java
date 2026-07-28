@@ -9,9 +9,15 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -112,33 +118,65 @@ public class TranslationController {
     // -------------------------------------------------------------------------
 
     @Operation(
-            summary = "Download a partial .srt file after a failed job",
-            description = "Returns an SRT file where completed entries contain translated text " +
-                    "and remaining entries contain the original subtitle text. " +
+            summary = "Download partial results after a failed job",
+            description = "Returns a ZIP archive containing two .srt files: " +
+                    "one with the completed (translated) subtitle blocks, " +
+                    "and one with the remaining (untranslated) subtitle blocks in their original language. " +
                     "Available after a job has failed and a snapshot has been saved.",
             responses = {
                     @ApiResponse(
                             responseCode = "200",
-                            description = "Partial .srt file",
-                            content = @Content(mediaType = "application/x-subrip")
+                            description = "ZIP archive with completed and remaining .srt files",
+                            content = @Content(mediaType = "application/zip")
                     ),
-                    @ApiResponse(responseCode = "404", description = "Job not found or no partial result available")
+                    @ApiResponse(responseCode = "404", description = "Job not found or no partial result available"),
+                    @ApiResponse(responseCode = "500", description = "Failed to build ZIP archive")
             }
     )
     @GetMapping("/{jobId}/partial")
     public ResponseEntity<byte[]> downloadPartial(@PathVariable String jobId) {
-        return jobStore.getFailedSnapshot(jobId)
-                .filter(s -> s.partialSrtContent() != null)
-                .map(snapshot -> {
-                    byte[] bytes = snapshot.partialSrtContent().getBytes(StandardCharsets.UTF_8);
-                    return ResponseEntity.ok()
-                            .header(HttpHeaders.CONTENT_DISPOSITION,
-                                    "attachment; filename=\"" + snapshot.partialFileName() + "\"")
-                            .contentType(MediaType.parseMediaType("application/x-subrip"))
-                            .contentLength(bytes.length)
-                            .body(bytes);
-                })
-                .orElse(ResponseEntity.notFound().build());
+        var snapshotOpt = jobStore.getFailedSnapshot(jobId)
+                .filter(s -> s.completedSrtContent() != null && s.remainingSrtContent() != null);
+
+        if (snapshotOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
+        }
+
+        var snapshot = snapshotOpt.get();
+        byte[] completedBytes = snapshot.completedSrtContent().getBytes(StandardCharsets.UTF_8);
+        byte[] remainingBytes = snapshot.remainingSrtContent().getBytes(StandardCharsets.UTF_8);
+
+        byte[] zipBytes;
+        try {
+            zipBytes = buildZip(snapshot.completedFileName(), completedBytes,
+                    snapshot.remainingFileName(), remainingBytes);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+
+        String baseName = snapshot.originalFileName() != null
+                ? snapshot.originalFileName().replaceFirst("\\.[^.]+$", "")
+                : "subtitle";
+        String zipFileName = baseName + "." + snapshot.targetLanguage() + ".partial.zip";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + zipFileName + "\"")
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .contentLength(zipBytes.length)
+                .body(zipBytes);
+    }
+
+    private static byte[] buildZip(String name1, byte[] bytes1, String name2, byte[] bytes2) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(baos)) {
+            zip.putNextEntry(new ZipEntry(name1));
+            zip.write(bytes1);
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry(name2));
+            zip.write(bytes2);
+            zip.closeEntry();
+        }
+        return baos.toByteArray();
     }
 
     // -------------------------------------------------------------------------

@@ -99,23 +99,52 @@ public class SubtitleFile {
     }
 
     /**
-     * Produces a partial SRT string without modifying this instance.
-     * Completed placeholders are replaced with their translated text;
-     * remaining placeholders are restored to their original subtitle text.
+     * Produces an SRT containing only the completed subtitle blocks with their translated text.
+     * Blocks whose placeholder is not in {@code completed} are excluded entirely.
      *
-     * @param completed  translations that succeeded
-     * @param remaining  entries that were not yet translated
-     * @return a valid SRT content string mixing translated and original text
+     * @param completed translations that succeeded
+     * @return valid SRT content with only translated subtitles, renumbered from 1
      */
-    public String computePartialContent(List<TranslatedEntry> completed, List<TranslationEntry> remaining) {
-        String partial = this.content;
+    public String computeCompletedContent(List<TranslatedEntry> completed) {
+        String result = this.content;
         for (TranslatedEntry entry : completed) {
-            partial = partial.replace(entry.placeholder(), entry.translatedText());
+            result = result.replace(entry.placeholder(), entry.translatedText());
         }
+        return stripBlocksContaining(result, "{{TRANSLATION_");
+    }
+
+    /**
+     * Produces an SRT containing only the remaining subtitle blocks with their original text.
+     * Blocks whose placeholder is not in {@code remaining} are excluded entirely.
+     *
+     * @param remaining entries that were not yet translated
+     * @return valid SRT content with only untranslated subtitles (original text), renumbered from 1
+     */
+    public String computeRemainingContent(List<TranslationEntry> remaining) {
+        String result = this.content;
         for (TranslationEntry entry : remaining) {
-            partial = partial.replace(entry.placeholder(), entry.originalText());
+            result = result.replace(entry.placeholder(), entry.originalText());
         }
-        return partial;
+        return stripBlocksContaining(result, "{{TRANSLATION_");
+    }
+
+    /**
+     * Removes any subtitle block that still contains a placeholder marker,
+     * then renumbers the surviving blocks sequentially from 1.
+     */
+    private static String stripBlocksContaining(String srtContent, String marker) {
+        String[] blocks = srtContent.split("\n\n");
+        StringBuilder out = new StringBuilder();
+        int number = 1;
+        for (String block : blocks) {
+            if (block.isBlank() || block.contains(marker)) continue;
+            // Replace the subtitle number (first line) with the new sequential number
+            int firstNewline = block.indexOf('\n');
+            String renumbered = firstNewline < 0 ? block : number + block.substring(firstNewline);
+            out.append(renumbered).append("\n\n");
+            number++;
+        }
+        return out.toString().stripTrailing();
     }
 
     public String getOriginalFileName() {
@@ -137,9 +166,7 @@ public class SubtitleFile {
      * Everything else — tags, symbols, quotes, punctuation — is stripped.
      */
     private static String normalize(String text) {
-        return text
-                .replaceAll("[^\\p{L}\\p{N}\\s\\-]", "") // keep only letters, digits, whitespace, dashes
-                .strip();
+        return text.strip();
     }
 
     private static boolean isSubtitleNumber(String line) {
